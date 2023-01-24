@@ -20,6 +20,7 @@ use std::{fs, path::Path};
 #[derive(Deserialize, Serialize)]
 pub struct Configuration {
     server: String,
+    pub text_size: u16,
     token: String
 }
 
@@ -53,6 +54,7 @@ impl Default for Configuration {
     fn default() -> Self {
         Self {
             server: String::from("server.mattkc.com"),
+            text_size: 16,
             token: String::from("Your token here")
         }
     }

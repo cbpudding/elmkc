@@ -18,6 +18,7 @@ mod config;
 mod protocol;
 mod socket;
 
+use chrono::{DateTime, Local, TimeZone};
 use crate::{config::Configuration, protocol::{InboundData, MessageAuth, OutboundMessage}};
 use iced::{
     executor,
@@ -40,7 +41,8 @@ struct ElmKC {
     config: Configuration,
     input: String,
     messages: Vec<Message>,
-    socket: SocketState
+    socket: SocketState,
+    username: Option<String>,
 }
 
 impl Application for ElmKC {
@@ -60,6 +62,7 @@ impl Application for ElmKC {
                 input: String::new(),
                 messages: Vec::new(),
                 socket: SocketState::Disconnected,
+                username: None
             },
             Command::none(),
         )
@@ -74,7 +77,11 @@ impl Application for ElmKC {
     }
 
     fn title(&self) -> String {
-        String::from("ElmKC")
+        if let Some(username) = &self.username {
+            format!("{username}@{} - ElmKC", self.config.server())
+        } else {
+            format!("{} - ElmKC", self.config.server())
+        }
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
@@ -102,7 +109,7 @@ impl Application for ElmKC {
                     Command::none()
                 }
                 socket::Event::Received(message) => match message.data() {
-                    InboundData::Chat { author, author_color, message, .. } => {
+                    InboundData::Chat { author, author_color, message, id, time, .. } => {
                         let color = if author_color.len() == 6 {
                             if let Ok(raw) = u32::from_str_radix(&author_color, 16) {
                                 let red = ((raw & 0xFF0000) >> 16) as u8;
@@ -117,15 +124,44 @@ impl Application for ElmKC {
                         };
                         let mut raw_content = String::new();
                         html_escape::decode_html_entities_to_string(&message, &mut raw_content);
+                        // Am I doing this right? ~Bread
+                        let timestamp = Local.timestamp_millis_opt(*time as _).unwrap();
                         self.messages.push(Message::Normal {
                             author: author.clone(),
                             color,
-                            content: raw_content
+                            content: raw_content,
+                            id: *id,
+                            timestamp
                         });
                         scrollable::snap_to(
                             MESSAGE_LOG.clone(),
                             scrollable::RelativeOffset::END
                         )
+                    }
+                    InboundData::Delete { messages } => {
+                        let mut victims = Vec::new();
+                        for i in 0..self.messages.len() {
+                            if let Message::Normal { id, .. } = self.messages[i] {
+                                if messages.contains(&id) {
+                                    victims.push(i);
+                                }
+                            }
+                        }
+                        // This is probably the correct way to handle this
+                        // since the indices might change, but I'm too tired to
+                        // think properly. ~Bread
+                        victims.sort();
+                        for i in (0..victims.len()).rev() {
+                            self.messages.remove(i);
+                        }
+                        scrollable::snap_to(
+                            MESSAGE_LOG.clone(),
+                            scrollable::RelativeOffset::END
+                        )
+                    }
+                    InboundData::GetUserConf { name, .. } => {
+                        self.username = Some(name.clone());
+                        Command::none()
                     }
                     InboundData::Join { name } => {
                         self.messages.push(Message::Join(name.clone()));
@@ -173,12 +209,15 @@ impl Application for ElmKC {
                                         .size(self.config.text_size)
                                         .style(Color::from_rgb8(245, 178, 178)))
                                 }
-                                Message::Normal { author, color, content } => {
+                                Message::Normal { author, color, content, timestamp, .. } => {
                                     let mut name = text(author);
                                     if let Some(c) = color {
                                         name = name.style(c);
                                     }
                                     Element::from(row![
+                                        text(timestamp.format(&self.config.timestamp))
+                                            .style(Color::from_rgb8(127, 127, 127))
+                                            .size(self.config.text_size),
                                         name.size(self.config.text_size),
                                         text(": ").size(self.config.text_size),
                                         text(content).size(self.config.text_size)
@@ -207,6 +246,7 @@ impl Application for ElmKC {
             .height(Length::Fill),
             text_input("Message", &self.input, |s| { Event::InputChange(s) })
                 .on_submit(Event::SendMessage)
+                .size(self.config.text_size)
         ]
         .height(Length::Fill)
         .width(Length::Fill)
@@ -221,7 +261,9 @@ enum Message {
     Normal {
         author: String,
         color: Option<Color>,
-        content: String
+        content: String,
+        id: usize,
+        timestamp: DateTime<Local>,
     },
     System(String)
 }

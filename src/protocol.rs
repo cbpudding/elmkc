@@ -63,6 +63,7 @@ pub enum MessageAuth {
 #[serde(content = "data", rename_all = "lowercase", tag = "type")]
 enum OutboundData {
     Hello { last_message: isize },
+    GetUserConf,
     Message { reply: usize, text: String },
 }
 
@@ -79,6 +80,13 @@ impl OutboundMessage {
         Self {
             auth: auth.clone(),
             data: OutboundData::Hello { last_message: -1 },
+        }
+    }
+
+    pub fn get_user_conf(auth: &MessageAuth) -> Self {
+        Self {
+            auth: auth.clone(),
+            data: OutboundData::GetUserConf
         }
     }
 

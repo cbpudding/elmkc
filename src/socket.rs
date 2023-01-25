@@ -89,6 +89,7 @@ pub fn connect(auth: MessageAuth, server: String) -> Subscription<Event> {
                             let (mut sender, receiver) = mpsc::channel(100);
 
                             sender.send(OutboundMessage::hello(&auth)).await.unwrap();
+                            sender.send(OutboundMessage::get_user_conf(&auth)).await.unwrap();
 
                             (
                                 Some(Event::Connected(Connection(sender))),

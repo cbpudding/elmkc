@@ -21,6 +21,7 @@ use std::{fs, path::Path};
 pub struct Configuration {
     server: String,
     pub text_size: u16,
+    pub timestamp: String,
     token: String
 }
 
@@ -55,6 +56,7 @@ impl Default for Configuration {
         Self {
             server: String::from("server.mattkc.com"),
             text_size: 16,
+            timestamp: String::from("%r "),
             token: String::from("Your token here")
         }
     }

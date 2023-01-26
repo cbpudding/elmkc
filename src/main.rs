@@ -18,14 +18,19 @@ mod config;
 mod protocol;
 mod socket;
 
+use crate::{
+    config::Configuration,
+    protocol::{InboundData, MessageAuth, OutboundMessage},
+};
 use chrono::{DateTime, Local, TimeZone};
-use crate::{config::Configuration, protocol::{InboundData, MessageAuth, OutboundMessage}};
 use iced::{
     executor,
     widget::{column, row, scrollable, text, text_input, Column},
     Application, Color, Command, Element, Length, Renderer, Settings, Subscription, Theme,
 };
+use ketos::Interpreter;
 use once_cell::sync::Lazy;
+use std::path::Path;
 
 static MESSAGE_LOG: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
 
@@ -41,6 +46,7 @@ struct ElmKC {
     config: Configuration,
     input: String,
     messages: Vec<Message>,
+    scripts: Vec<Interpreter>,
     socket: SocketState,
     username: Option<String>,
 }
@@ -53,6 +59,15 @@ impl Application for ElmKC {
 
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         let config = Configuration::load("config.toml");
+        let scripts = config
+            .scripts()
+            .iter()
+            .map(|path| {
+                let interp = Interpreter::new();
+                interp.run_file(Path::new(path)).unwrap();
+                interp
+            })
+            .collect();
         (
             Self {
                 auth: MessageAuth::Google {
@@ -61,8 +76,9 @@ impl Application for ElmKC {
                 config,
                 input: String::new(),
                 messages: Vec::new(),
+                scripts,
                 socket: SocketState::Disconnected,
-                username: None
+                username: None,
             },
             Command::none(),
         )
@@ -109,7 +125,14 @@ impl Application for ElmKC {
                     Command::none()
                 }
                 socket::Event::Received(message) => match message.data() {
-                    InboundData::Chat { author, author_color, message, id, time, .. } => {
+                    InboundData::Chat {
+                        author,
+                        author_color,
+                        message,
+                        id,
+                        time,
+                        ..
+                    } => {
                         let color = if author_color.len() == 6 {
                             if let Ok(raw) = u32::from_str_radix(&author_color, 16) {
                                 let red = ((raw & 0xFF0000) >> 16) as u8;
@@ -131,12 +154,9 @@ impl Application for ElmKC {
                             color,
                             content: raw_content,
                             id: *id,
-                            timestamp
+                            timestamp,
                         });
-                        scrollable::snap_to(
-                            MESSAGE_LOG.clone(),
-                            scrollable::RelativeOffset::END
-                        )
+                        scrollable::snap_to(MESSAGE_LOG.clone(), scrollable::RelativeOffset::END)
                     }
                     InboundData::Delete { messages } => {
                         let mut victims = Vec::new();
@@ -154,10 +174,7 @@ impl Application for ElmKC {
                         for i in (0..victims.len()).rev() {
                             self.messages.remove(i);
                         }
-                        scrollable::snap_to(
-                            MESSAGE_LOG.clone(),
-                            scrollable::RelativeOffset::END
-                        )
+                        scrollable::snap_to(MESSAGE_LOG.clone(), scrollable::RelativeOffset::END)
                     }
                     InboundData::GetUserConf { name, .. } => {
                         self.username = Some(name.clone());
@@ -165,27 +182,18 @@ impl Application for ElmKC {
                     }
                     InboundData::Join { name } => {
                         self.messages.push(Message::Join(name.clone()));
-                        scrollable::snap_to(
-                            MESSAGE_LOG.clone(),
-                            scrollable::RelativeOffset::END
-                        )
+                        scrollable::snap_to(MESSAGE_LOG.clone(), scrollable::RelativeOffset::END)
                     }
                     InboundData::Part { name } => {
                         self.messages.push(Message::Leave(name.clone()));
-                        scrollable::snap_to(
-                            MESSAGE_LOG.clone(),
-                            scrollable::RelativeOffset::END
-                        )
+                        scrollable::snap_to(MESSAGE_LOG.clone(), scrollable::RelativeOffset::END)
                     }
                     InboundData::ServerMsg { message } => {
                         self.messages.push(Message::System(message.clone()));
-                        scrollable::snap_to(
-                            MESSAGE_LOG.clone(),
-                            scrollable::RelativeOffset::END
-                        )
+                        scrollable::snap_to(MESSAGE_LOG.clone(), scrollable::RelativeOffset::END)
                     }
-                    _ => Command::none()
-                }
+                    _ => Command::none(),
+                },
             },
         }
     }
@@ -199,17 +207,23 @@ impl Application for ElmKC {
                         .cloned()
                         .map(|msg| {
                             match msg {
-                                Message::Join(name) => {
-                                    Element::from(text(format!("+{name}"))
+                                Message::Join(name) => Element::from(
+                                    text(format!("+{name}"))
                                         .size(self.config.text_size)
-                                        .style(Color::from_rgb8(178, 245, 178)))
-                                }
-                                Message::Leave(name) => {
-                                    Element::from(text(format!("-{name}"))
+                                        .style(Color::from_rgb8(178, 245, 178)),
+                                ),
+                                Message::Leave(name) => Element::from(
+                                    text(format!("-{name}"))
                                         .size(self.config.text_size)
-                                        .style(Color::from_rgb8(245, 178, 178)))
-                                }
-                                Message::Normal { author, color, content, timestamp, .. } => {
+                                        .style(Color::from_rgb8(245, 178, 178)),
+                                ),
+                                Message::Normal {
+                                    author,
+                                    color,
+                                    content,
+                                    timestamp,
+                                    ..
+                                } => {
                                     let mut name = text(author);
                                     if let Some(c) = color {
                                         name = name.style(c);
@@ -223,19 +237,17 @@ impl Application for ElmKC {
                                         text(content).size(self.config.text_size)
                                     ])
                                 }
-                                Message::System(content) => {
-                                    Element::from(Column::with_children(
-                                        content
-                                            .split("<br>")
-                                            .map(|t| {
-                                                text(t)
-                                                    .style(Color::from_rgb8(127, 127, 127))
-                                                    .size(self.config.text_size)
-                                            })
-                                            .map(Element::from)
-                                            .collect()
-                                    ))
-                                }
+                                Message::System(content) => Element::from(Column::with_children(
+                                    content
+                                        .split("<br>")
+                                        .map(|t| {
+                                            text(t)
+                                                .style(Color::from_rgb8(127, 127, 127))
+                                                .size(self.config.text_size)
+                                        })
+                                        .map(Element::from)
+                                        .collect(),
+                                )),
                             }
                         })
                         .collect()
@@ -265,7 +277,7 @@ enum Message {
         id: usize,
         timestamp: DateTime<Local>,
     },
-    System(String)
+    System(String),
 }
 
 enum SocketState {

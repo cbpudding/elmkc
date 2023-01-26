@@ -19,8 +19,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(content = "data", rename_all = "lowercase", tag = "type")]
 pub enum InboundData {
-    Accepted { message: String },
-    AuthLevel { value: usize },
+    Accepted {
+        message: String,
+    },
+    AuthLevel {
+        value: usize,
+    },
     Chat {
         auth: usize,
         author: String,
@@ -31,14 +35,27 @@ pub enum InboundData {
         id: usize,
         message: String,
         reply: usize,
-        time: usize
+        time: usize,
     },
-    Delete { messages: Vec<usize> },
-    GetUserConf { color: String, name: String },
-    Join { name: String },
-    Part { name: String },
-    ServerMsg { message: String },
-    Status { status: UserStatus }
+    Delete {
+        messages: Vec<usize>,
+    },
+    GetUserConf {
+        color: String,
+        name: String,
+    },
+    Join {
+        name: String,
+    },
+    Part {
+        name: String,
+    },
+    ServerMsg {
+        message: String,
+    },
+    Status {
+        status: UserStatus,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -86,7 +103,7 @@ impl OutboundMessage {
     pub fn get_user_conf(auth: &MessageAuth) -> Self {
         Self {
             auth: auth.clone(),
-            data: OutboundData::GetUserConf
+            data: OutboundData::GetUserConf,
         }
     }
 
@@ -112,5 +129,5 @@ pub enum UserStatus {
     NameTimeout,
     Rename,
     SetUserConf,
-    Unauthenticated
+    Unauthenticated,
 }

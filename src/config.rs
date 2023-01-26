@@ -19,10 +19,11 @@ use std::{fs, path::Path};
 
 #[derive(Deserialize, Serialize)]
 pub struct Configuration {
+    scripts: Vec<String>,
     server: String,
     pub text_size: u16,
     pub timestamp: String,
-    token: String
+    token: String,
 }
 
 impl Configuration {
@@ -36,10 +37,14 @@ impl Configuration {
             config
         }
     }
-    
+
     pub fn save<P: AsRef<Path>>(&self, path: P) {
         let buffer = toml::to_string_pretty(self).unwrap();
         fs::write(path, buffer).unwrap();
+    }
+
+    pub fn scripts(&self) -> &Vec<String> {
+        &self.scripts
     }
 
     pub fn server(&self) -> &String {
@@ -54,10 +59,11 @@ impl Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Self {
+            scripts: Vec::new(),
             server: String::from("server.mattkc.com"),
             text_size: 16,
             timestamp: String::from("%r "),
-            token: String::from("Your token here")
+            token: String::from("Your token here"),
         }
     }
 }
